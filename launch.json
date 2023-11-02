@@ -28,8 +28,8 @@
         "type": "lldb",
         "request": "launch",
         "args": [],
-        "cwd": "/Users/joel_mills/Documents/MPI_Environment",
-        "program": "/Users/joel_mills/Documents/MPI_Environment/build/Debug/outDebug"
+        "cwd": "/Users/joel_mills/Documents/Lebwohl_Lasher",
+        "program": "/Users/joel_mills/Documents/Lebwohl_Lasher/build/Debug/outDebug"
       }
     ]
   }
