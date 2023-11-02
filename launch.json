@@ -1,0 +1,35 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "name": "mpic++ - Build and debug active file",
+        "type": "cppdbg",
+        "request": "launch",
+        "program": "${fileDirname}/${fileBasenameNoExtension}",
+        "args": [
+          "-np",
+          "1",
+          "${fileDirname}/${fileBasenameNoExtension}"
+        ],
+        "stopAtEntry": true,
+        "cwd": "${workspaceFolder}",
+        "environment": [
+          {
+            "name": "TMPDIR",
+            "value": "/tmp"
+          }
+        ],
+        "externalConsole": false,
+        "MIMode": "lldb",
+        "preLaunchTask": "mpic++ build active file"
+      },
+      {
+        "name": "C/C++ Runner: Debug Session",
+        "type": "lldb",
+        "request": "launch",
+        "args": [],
+        "cwd": "/Users/joel_mills/Documents/MPI_Environment",
+        "program": "/Users/joel_mills/Documents/MPI_Environment/build/Debug/outDebug"
+      }
+    ]
+  }
