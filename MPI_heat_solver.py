@@ -145,7 +145,7 @@ def main( PROGNAME, STEPS, NXPROB, NYPROB ):
         # Begin doing STEPS iterations.  Must communicate border rows with
         # neighbours.  If I have the first or last grid row, then I only need
         # to  communicate with one neighbour
-        iz = 0;
+        iz = 0
         for it in range(STEPS):
             if above != NONE:
                 req=comm.Isend([u[iz,offset,:],NYPROB,MPI.DOUBLE], dest=above, tag=RTAG)
@@ -154,7 +154,7 @@ def main( PROGNAME, STEPS, NXPROB, NYPROB ):
                 req=comm.Isend([u[iz,offset+rows-1,:],NYPROB,MPI.DOUBLE], dest=below, tag=LTAG)
                 comm.Recv([u[iz,offset+rows,:],NYPROB,MPI.DOUBLE], source=below, tag=RTAG)
             # Now call update to update the value of grid points
-            update(start,end,NYPROB,u[iz],u[1-iz]);
+            update(start,end,NYPROB,u[iz],u[1-iz])
             iz = 1 - iz
 
         # Finally, send my portion of final results back to master
@@ -163,7 +163,7 @@ def main( PROGNAME, STEPS, NXPROB, NYPROB ):
         comm.Send([u[iz,offset,:],rows*NYPROB,MPI.DOUBLE], dest=MASTER, tag=DONE)
 
 #********* input code ***********/
-if _name_ == '_main_':
+if __name__ == '__main__':
     if int(len(sys.argv)) == 4:
         PROGNAME = sys.argv[0]
         STEPS = int(sys.argv[1])
