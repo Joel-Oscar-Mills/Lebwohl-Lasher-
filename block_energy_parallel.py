@@ -23,15 +23,15 @@ def initdat(NMAX):
     return angles
 
 
-def block_energy(start, end, NMAX, angles, energies):
+def block_energy(rows, NMAX, angles, energies):
     """
     """
-    for ix in range(start,end+1):
+    for ix in range(1,rows+1):
 
-        energies[ix,:] += 0.5 - 1.5*(np.cos(angles[ix,:]-angles[(ix+1)%NMAX,:]))**2
-        energies[ix,:] += 0.5 - 1.5*(np.cos(angles[ix,:]-angles[(ix-1)%NMAX,:]))**2
-        energies[ix,:] += 0.5 - 1.5*(np.cos(angles[ix,:]-np.roll(angles[ix,:],-1)))**2
-        energies[ix,:] += 0.5 - 1.5*(np.cos(angles[ix,:]-np.roll(angles[ix,:],1)))**2
+        energies[ix-1,:] += 0.5 - 1.5*(np.cos(angles[ix,:]-angles[ix+1,:]))**2
+        energies[ix-1,:] += 0.5 - 1.5*(np.cos(angles[ix,:]-angles[ix-1,:]))**2
+        energies[ix-1,:] += 0.5 - 1.5*(np.cos(angles[ix,:]-np.roll(angles[ix,:],-1)))**2
+        energies[ix-1,:] += 0.5 - 1.5*(np.cos(angles[ix,:]-np.roll(angles[ix,:],1)))**2
 
 
 MAXWORKER  = 3          # maximum number of worker tasks
@@ -46,17 +46,12 @@ MASTER     = 0          # taskid of first process
 
 def main(PROGNAME, NMAX):
 
-    # Create and initialise lattice of angles and energies
-    angles = np.zeros((NMAX,NMAX))
-    energies = np.zeros((NMAX,NMAX))
-
     # First, find out my taskid and how many tasks are running
     comm = MPI.COMM_WORLD
     taskid = comm.Get_rank()
     numtasks = comm.Get_size()
     numworkers = numtasks-1
 
-    
     #********* master code ***********/
     if taskid == MASTER:
     # Check if numworkers is within range - quit if not
@@ -69,6 +64,7 @@ def main(PROGNAME, NMAX):
 
         # Initialize grid
         angles = initdat(NMAX)
+        energies = np.zeros((NMAX,NMAX))
 
         # Distribute work to workers.  Must first figure out how many rows to
         # send and what to do with extra rows.
@@ -114,30 +110,34 @@ def main(PROGNAME, NMAX):
     #********* workers code ************/
     elif taskid != MASTER:
         # Array is already initialized to zero 
-        # Receive my offset, rows, neighbors and grid partition from master
+        # Receive my offset, rows & neighbors 
         offset = comm.recv(source=MASTER, tag=BEGIN)
         rows = comm.recv(source=MASTER, tag=BEGIN)
         above = comm.recv(source=MASTER, tag=BEGIN)
         below = comm.recv(source=MASTER, tag=BEGIN)
-        comm.Recv([angles[offset,:],rows*NMAX,MPI.DOUBLE], source=MASTER, tag=BEGIN)
+
+        # set aside the exact amount of memory this process requires to receive the master's portion with room for neighbours above & below
+        angles = np.zeros((rows+2,NMAX))
+        comm.Recv([angles[1,:],rows*NMAX,MPI.DOUBLE], source=MASTER, tag=BEGIN)
 
         # Determine border elements.  
         start=offset
         end=offset+rows-1
 
         # Must communicate border rows with neighbours. 
-        req=comm.Isend([angles[offset,:],NMAX,MPI.DOUBLE], dest=above, tag=ATAG)
-        req=comm.Isend([angles[offset+rows-1,:],NMAX,MPI.DOUBLE], dest=below, tag=BTAG)
-        comm.Recv([angles[(offset-1)%NMAX,:],NMAX,MPI.DOUBLE], source=above, tag=BTAG)
-        comm.Recv([angles[(offset+rows)%NMAX,:],NMAX,MPI.DOUBLE], source=below, tag=ATAG)
+        req=comm.Isend([angles[1,:],NMAX,MPI.DOUBLE], dest=above, tag=ATAG)
+        req=comm.Isend([angles[rows,:],NMAX,MPI.DOUBLE], dest=below, tag=BTAG)
+        comm.Recv([angles[0,:],NMAX,MPI.DOUBLE], source=above, tag=BTAG)
+        comm.Recv([angles[rows+1,:],NMAX,MPI.DOUBLE], source=below, tag=ATAG)
 
-        # Now call update to update the value of grid points
-        block_energy(start,end,NMAX,angles,energies)
+        # Now compute the energies
+        energies = np.zeros((rows,NMAX))
+        block_energy(rows,NMAX,angles,energies)
 
         # Finally, send my portion of final results back to master
         comm.send(offset, dest=MASTER, tag=DONE)
         comm.send(rows, dest=MASTER, tag=DONE)
-        comm.Send([energies[offset,:],rows*NMAX,MPI.DOUBLE], dest=MASTER, tag=DONE)
+        comm.Send([energies[0,:],rows*NMAX,MPI.DOUBLE], dest=MASTER, tag=DONE)
 
 
 
