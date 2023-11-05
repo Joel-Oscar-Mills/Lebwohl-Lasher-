@@ -2,6 +2,7 @@ import sys
 import time
 import datetime
 import numpy as np
+from math import ceil
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import os
@@ -10,7 +11,7 @@ os.environ["NUMEXPR_NUM_THREADS"] = "1"
 os.environ["OMP_NUM_THREADS"] = "1"
 from mpi4py import MPI
 
-MAXWORKER  = 3          # maximum number of worker tasks
+MAXWORKER  = 100          # maximum number of worker tasks
 MINWORKER  = 1          # minimum number of worker tasks
 BEGIN      = 1          # message tag
 DONE       = 2          # message tag
@@ -221,7 +222,7 @@ def MC_step(comm,angles,energies,Ts,NMAX,rows,offset,above,below,E,Q,R,it):
     return angles, energies, E, Q, R
 
 #=======================================================================
-def main(program, STEPS, NMAX, Ts, pflag):
+def simulation_runtime(comm, STEPS, NMAX, Ts):
     """
     Arguments:
 	  program (string) = the name of the program;
@@ -234,9 +235,7 @@ def main(program, STEPS, NMAX, Ts, pflag):
     Returns:
       NULL
     """
-
     # First, find out my taskid and how many tasks are running
-    comm = MPI.COMM_WORLD
     taskid = comm.Get_rank()
     numtasks = comm.Get_size()
     numworkers = numtasks-1
@@ -246,7 +245,6 @@ def main(program, STEPS, NMAX, Ts, pflag):
     R = np.zeros(STEPS)
     Q = np.zeros((STEPS,2,2))
     # Set initial values in arrays
-
 
     #********* master code ***********/
     if taskid == MASTER:
@@ -259,9 +257,6 @@ def main(program, STEPS, NMAX, Ts, pflag):
         # Initialize grid
         angles = initdat(NMAX)
         energies = np.zeros((NMAX,NMAX))
-
-        # Plot initial frame of lattice
-        plotdat(angles,energies,pflag,NMAX)
 
         # Distribute work to workers.  Must first figure out how many rows to
         # send and what to do with extra rows.
@@ -313,10 +308,8 @@ def main(program, STEPS, NMAX, Ts, pflag):
         order = get_order(Q,STEPS)
         final_time = MPI.Wtime()
         runtime = final_time-initial_time
-
-        print("{}: Size: {:d}, Steps: {:d}, T*: {:5.3f}: Order: {:5.3f}, Time: {:8.6f} s".format(program, NMAX,STEPS,Ts,order[STEPS-1],runtime))
-        #savedat(angles,STEPS,Ts,runtime,R,E,order,NMAX)
-        plotdat(angles,energies,pflag,NMAX)
+        return runtime
+    
     # End of master code
     
     #********* workers code ************/
@@ -346,20 +339,32 @@ def main(program, STEPS, NMAX, Ts, pflag):
         comm.Send([Q[0:],STEPS*4,MPI.DOUBLE], dest=MASTER, tag=DONE)
         comm.Send([R[0:],STEPS,MPI.DOUBLE], dest=MASTER, tag=DONE)
 
+    
+#=======================================================================
+def main(program, NP):
+    """
+    """
+    comm = MPI.COMM_WORLD
+    list_NMAX = [ceil(10*(10**(3*i/30))) for i in range(31)]
+    STEPS = 50
+    Ts = 0.5
+    runtimes = np.zeros(31)
 
+    for i, NMAX in enumerate(list_NMAX):
+        runtimes[i] = simulation_runtime(comm,STEPS,NMAX,Ts)
+
+    if comm.Get_rank() == 0:      
+        np.savetxt(f"./runtime_vs_NMAX_{NP}.txt",runtimes)
 
 #=======================================================================
 # Main part of program, getting command line arguments and calling
 # main simulation function.
 #
 if __name__ == '__main__':
-    if int(len(sys.argv)) == 5:
+    if int(len(sys.argv)) == 2:
         PROGNAME = sys.argv[0]
-        ITERATIONS = int(sys.argv[1])
-        SIZE = int(sys.argv[2])
-        TEMPERATURE = float(sys.argv[3])
-        PLOTFLAG = int(sys.argv[4])
-        main(PROGNAME, ITERATIONS, SIZE, TEMPERATURE, PLOTFLAG)
+        NP = int(sys.argv[1])
+        main(PROGNAME,NP)
     else:
-        print("Usage: python {} <ITERATIONS> <SIZE> <TEMPERATURE> <PLOTFLAG>".format(sys.argv[0]))
+        print("Usage: python {} <NUM_PROCESSES>".format(sys.argv[0]))
 #=======================================================================
