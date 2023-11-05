@@ -121,10 +121,10 @@ def block_energy(rows, angles, energies, parity):
     """
     for ix in range(1,rows+1):
 
-        energies[ix-1,parity::2] += 0.5 - 1.5*(np.cos(angles[ix,parity::2]-angles[ix+1,parity::2]))**2
-        energies[ix-1,parity::2] += 0.5 - 1.5*(np.cos(angles[ix,parity::2]-angles[ix-1,parity::2]))**2
-        energies[ix-1,parity::2] += 0.5 - 1.5*(np.cos(angles[ix,parity::2]-np.roll(angles[ix,1-parity::2],-1)))**2
-        energies[ix-1,parity::2] += 0.5 - 1.5*(np.cos(angles[ix,parity::2]-np.roll(angles[ix,1-parity::2],1)))**2
+        energies[ix-1,parity::2] += 0.5 - 1.5*(np.cos( angles[ix,parity::2]-angles[ix+1,parity::2] ))**2
+        energies[ix-1,parity::2] += 0.5 - 1.5*(np.cos( angles[ix,parity::2]-angles[ix-1,parity::2] ))**2
+        energies[ix-1,parity::2] += 0.5 - 1.5*(np.cos( angles[ix,parity::2]-np.roll(angles[ix,:],-1)[(parity)::2] ))**2
+        energies[ix-1,parity::2] += 0.5 - 1.5*(np.cos( angles[ix,parity::2]-np.roll(angles[ix,:],1)[(parity)::2] ))**2
         parity = 1 - parity
 
 #=======================================================================
@@ -156,9 +156,15 @@ def MC_substep(comm,angles,rangles,energies,Ts,NMAX,rows,parity,above,below,R,it
     # Now compute the energies
     block_energy(rows,angles,energies[0],parity)
 
+
     # Perturb the angles randomly (for on-parity sites)
-    angles[(1+parity):rows+1:2,parity::2] += rangles[parity:rows+1:2,parity::2]
-    angles[(2-parity):rows+1:2,(1-parity)::2] += rangles[(1-parity):rows+1:2,(1-parity)::2]
+    if parity == 0:
+        angles[(1+parity):rows+1:2,parity::2] += rangles[parity::2,parity::2]
+        angles[(2-parity):rows+1:2,(1-parity)::2] += rangles[(1-parity)::2,(1-parity)::2]
+    else:
+        angles[(1+parity):rows+1:2,(1-parity)::2] += rangles[parity::2,(1-parity)::2]
+        angles[(2-parity):rows+1:2,parity::2] += rangles[(1-parity)::2,parity::2]
+
 
     # Must communicate new border rows with neighbours.
     req=comm.Isend([angles[1,:],NMAX,MPI.DOUBLE], dest=above, tag=ATAG)
@@ -177,12 +183,21 @@ def MC_substep(comm,angles,rangles,energies,Ts,NMAX,rows,parity,above,below,R,it
     # Adjust energies based on which sites were accepted
     energies[1] = accept*energies[1] + (1-accept)*energies[0]
 
-    # Record this rank's portion of the total acceptance ratio
-    R[it] += (np.sum(accept[parity::2,parity::2])+np.sum(accept[1-parity::2,1-parity::2]))/(NMAX**2)
+    if parity == 0:
+        # Record this rank's portion of the total acceptance ratio
+        R[it] += (np.sum(accept[parity::2,parity::2])+np.sum(accept[1-parity::2,1-parity::2]))/(NMAX**2)
 
-    # Undo the rejected changes
-    angles[1+parity:rows+1:2,parity::2] -= (1-accept[parity::2,parity::2])*rangles[parity::2,parity::2]
-    angles[2-parity:rows+1:2,1-parity::2] -= (1-accept[1-parity::2,1-parity::2])*rangles[1-parity::2,1-parity::2]
+        # Undo the rejected changes
+        angles[(1+parity):rows+1:2,parity::2] -= (1-accept[parity::2,parity::2])*rangles[parity::2,parity::2]
+        angles[(2-parity):rows+1:2,(1-parity)::2] -= (1-accept[(1-parity)::2,(1-parity)::2])*rangles[(1-parity)::2,(1-parity)::2]
+    else:
+        # Record this rank's portion of the total acceptance ratio
+        R[it] += (np.sum(accept[parity::2,(1-parity)::2])+np.sum(accept[(1-parity)::2,parity::2]))/(NMAX**2)
+
+        # Undo the rejected changes
+        angles[(1+parity):rows+1:2,(1-parity)::2] -= (1-accept[parity::2,(1-parity)::2])*rangles[parity::2,(1-parity)::2]
+        angles[(2-parity):rows+1:2,parity::2] -= (1-accept[(1-parity)::2,parity::2])*rangles[(1-parity)::2,parity::2]
+
 
 #=======================================================================
 def MC_step(comm,angles,energies,Ts,NMAX,rows,offset,above,below,E,Q,R,it):
@@ -191,13 +206,15 @@ def MC_step(comm,angles,energies,Ts,NMAX,rows,offset,above,below,E,Q,R,it):
     scale=0.1+Ts
     rangles = np.random.normal(scale=scale, size=(rows,NMAX))
     energies = np.zeros((2,rows,NMAX))
-    parity = offset%2
 
+    parity = offset%2
     MC_substep(comm,angles,rangles,energies,Ts,NMAX,rows,parity,above,below,R,it)
-    MC_substep(comm,angles,rangles,energies,Ts,NMAX,rows,1-parity,above,below,R,it)
+
+    parity = 1 - offset%2
+    MC_substep(comm,angles,rangles,energies,Ts,NMAX,rows,parity,above,below,R,it)
 
     # Recompute on-parity site energies as these will have changed after the off-parity update
-    block_energy(rows,angles,energies[1],parity)
+    block_energy(rows,angles,energies[1],offset%2)
     E[it] = np.sum(energies[1])
     Q[it] = partial_Q(angles,NMAX)
 

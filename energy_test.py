@@ -7,7 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import sys
 
-
+#=======================================================================
 def initdat(NMAX):
     """
     Arguments:
@@ -23,16 +23,53 @@ def initdat(NMAX):
     return angles
 
 
+#=======================================================================
 def block_energy(rows, angles, energies, parity):
     """
     """
     for ix in range(1,rows+1):
 
-        energies[ix-1,parity::2] += 0.5 - 1.5*(np.cos(angles[ix,parity::2]-angles[ix+1,parity::2]))**2
-        energies[ix-1,parity::2] += 0.5 - 1.5*(np.cos(angles[ix,parity::2]-angles[ix-1,parity::2]))**2
-        energies[ix-1,parity::2] += 0.5 - 1.5*(np.cos(angles[ix,parity::2]-np.roll(angles[ix,1-parity::2],-1)))**2
-        energies[ix-1,parity::2] += 0.5 - 1.5*(np.cos(angles[ix,parity::2]-np.roll(angles[ix,1-parity::2],1)))**2
+        energies[ix-1,parity::2] += 0.5 - 1.5*(np.cos( angles[ix,parity::2]-angles[ix+1,parity::2] ))**2
+        energies[ix-1,parity::2] += 0.5 - 1.5*(np.cos( angles[ix,parity::2]-angles[ix-1,parity::2] ))**2
+        energies[ix-1,parity::2] += 0.5 - 1.5*(np.cos( angles[ix,parity::2]-np.roll(angles[ix,:],-1)[(parity)::2] ))**2
+        energies[ix-1,parity::2] += 0.5 - 1.5*(np.cos( angles[ix,parity::2]-np.roll(angles[ix,:],1)[(parity)::2] ))**2
         parity = 1 - parity
+
+
+#=======================================================================
+def one_energy(arr,ix,iy,nmax):
+    """
+    Arguments:
+	  arr (float(nmax,nmax)) = array that contains lattice data;
+	  ix (int) = x lattice coordinate of cell;
+	  iy (int) = y lattice coordinate of cell;
+      nmax (int) = side length of square lattice.
+    Description:
+      Function that computes the energy of a single cell of the
+      lattice taking into account periodic boundaries.  Working with
+      reduced energy (U/epsilon), equivalent to setting epsilon=1 in
+      equation (1) in the project notes.
+	Returns:
+	  en (float) = reduced energy of cell.
+    """
+    en = 0.0
+    ixp = (ix+1)%nmax # These are the coordinates
+    ixm = (ix-1)%nmax # of the neighbours
+    iyp = (iy+1)%nmax # with wraparound
+    iym = (iy-1)%nmax #
+#
+# Add together the 4 neighbour contributions
+# to the energy
+#
+    ang = arr[ix,iy]-arr[ixp,iy]
+    en += 0.5*(1.0 - 3.0*np.cos(ang)**2)
+    ang = arr[ix,iy]-arr[ixm,iy]
+    en += 0.5*(1.0 - 3.0*np.cos(ang)**2)
+    ang = arr[ix,iy]-arr[ix,iyp]
+    en += 0.5*(1.0 - 3.0*np.cos(ang)**2)
+    ang = arr[ix,iy]-arr[ix,iym]
+    en += 0.5*(1.0 - 3.0*np.cos(ang)**2)
+    return en
 
 
 MAXWORKER  = 3          # maximum number of worker tasks
@@ -66,6 +103,7 @@ def main(PROGNAME, NMAX):
         # Initialize grid
         angles = initdat(NMAX)
         energies = np.zeros((NMAX,NMAX))
+        serial_energies = np.zeros((NMAX,NMAX))
 
         # Distribute work to workers.  Must first figure out how many rows to
         # send and what to do with extra rows.
@@ -104,9 +142,16 @@ def main(PROGNAME, NMAX):
             rows = comm.recv(source=i, tag=DONE)
             comm.Recv([energies[offset,:],rows*NMAX,MPI.DOUBLE], source=i, tag=DONE)
 
+        # Compute one site energies as in the serial algorithm
+        for ix in range(NMAX):
+            for iy in range(NMAX):
+                serial_energies[ix,iy] = one_energy(angles,ix,iy,NMAX)
+
         final_time = MPI.Wtime()
-        print("Grid size: ({},{}) Workers: {} Time: {:9.6f} s".format(NMAX,NMAX,numworkers,final_time-initial_time))
+        print(energies-serial_energies)
+
     # End of master code
+    
     
     #********* workers code ************/
     elif taskid != MASTER:
@@ -116,12 +161,16 @@ def main(PROGNAME, NMAX):
         rows = comm.recv(source=MASTER, tag=BEGIN)
         above = comm.recv(source=MASTER, tag=BEGIN)
         below = comm.recv(source=MASTER, tag=BEGIN)
-        parity = offset%2
 
         # set aside the exact amount of memory this process requires to receive \
         # the master's portion with room for neighbours above & below
         angles = np.zeros((rows+2,NMAX))
+        energies = np.zeros((rows,NMAX))
         comm.Recv([angles[1,:],rows*NMAX,MPI.DOUBLE], source=MASTER, tag=BEGIN)
+
+        #if taskid == 1:
+            #print(angles[1])
+            #print(np.roll(angles[1],1))
 
         # Must communicate border rows with neighbours. 
         req=comm.Isend([angles[1,:],NMAX,MPI.DOUBLE], dest=above, tag=ATAG)
@@ -129,9 +178,12 @@ def main(PROGNAME, NMAX):
         comm.Recv([angles[0,:],NMAX,MPI.DOUBLE], source=above, tag=BTAG)
         comm.Recv([angles[rows+1,:],NMAX,MPI.DOUBLE], source=below, tag=ATAG)
 
+
         # Now compute the energies
-        energies = np.zeros((rows,NMAX))
-        block_energy(rows,NMAX,angles,energies,parity)
+        parity = offset%2
+        block_energy(rows,angles,energies,parity)
+        parity = 1 - offset%2
+        block_energy(rows,angles,energies,parity)
 
         # Finally, send my portion of final results back to master
         comm.send(offset, dest=MASTER, tag=DONE)
