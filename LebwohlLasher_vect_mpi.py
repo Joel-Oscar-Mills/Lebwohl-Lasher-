@@ -127,6 +127,9 @@ def block_energy(rows, angles, energies, parity):
         energies[ix-1,parity::2] += 0.5 - 1.5*(np.cos( angles[ix,parity::2]-np.roll(angles[ix,:],1)[(parity)::2] ))**2
         parity = 1 - parity
 
+    # Reset parity to initial value
+    parity = (parity + rows%2)%2
+
 #=======================================================================
 def partial_Q(angles,NMAX):
     """
@@ -245,7 +248,6 @@ def main(program, STEPS, NMAX, Ts, pflag):
     E = np.zeros(STEPS)
     R = np.zeros(STEPS)
     Q = np.zeros((STEPS,2,2))
-    # Set initial values in arrays
 
 
     #********* master code ***********/
