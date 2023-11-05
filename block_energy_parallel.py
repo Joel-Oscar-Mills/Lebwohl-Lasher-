@@ -116,13 +116,10 @@ def main(PROGNAME, NMAX):
         above = comm.recv(source=MASTER, tag=BEGIN)
         below = comm.recv(source=MASTER, tag=BEGIN)
 
-        # set aside the exact amount of memory this process requires to receive the master's portion with room for neighbours above & below
+        # set aside the exact amount of memory this process requires to receive \
+        # the master's portion with room for neighbours above & below
         angles = np.zeros((rows+2,NMAX))
         comm.Recv([angles[1,:],rows*NMAX,MPI.DOUBLE], source=MASTER, tag=BEGIN)
-
-        # Determine border elements.  
-        start=offset
-        end=offset+rows-1
 
         # Must communicate border rows with neighbours. 
         req=comm.Isend([angles[1,:],NMAX,MPI.DOUBLE], dest=above, tag=ATAG)
