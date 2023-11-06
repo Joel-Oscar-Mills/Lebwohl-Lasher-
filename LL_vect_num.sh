@@ -3,8 +3,8 @@
 #SBATCH --job-name=Lebwohl_Lasher
 #SBATCH --partition=teach_cpu
 #SBATCH --nodes=1
-#SBATCH --ntasks-per-node=2
-#SBATCH --cpus-per-task=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=8
 #SBATCH --time=2:0:0
 #SBATCH --mem-per-cpu=10000M
 #SBATCH --account=phys026162
@@ -13,6 +13,8 @@
 ## (The %j is replaced by the job id.)
 #SBATCH -e skeleton_err_%j.txt
 #SBATCH -o skeleton_out_%j.txt
+
+export OMP_NUM_THREADS=${SLURM_CPUS_PER_TASK}
 
 # Just in case this is not loaded already...
 module load languages/intel/2020-u4
@@ -30,7 +32,7 @@ echo "${SLURM_JOB_NODELIST}"
 printf "\n\n"
 
 # Submit
-mpiexec -n 2 python LL_vect_mpi_many.py 2
+numba LL_vect_num_many.py
 
 # Output the end time
 printf "\n\n"

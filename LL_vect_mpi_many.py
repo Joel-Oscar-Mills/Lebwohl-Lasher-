@@ -3,8 +3,6 @@ import time
 import datetime
 import numpy as np
 from math import ceil
-import matplotlib.pyplot as plt
-import matplotlib as mpl
 import os
 os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["NUMEXPR_NUM_THREADS"] = "1"
@@ -34,51 +32,7 @@ def initdat(NMAX):
     """
     arr = np.random.random_sample((NMAX,NMAX))*2.0*np.pi
     return arr
-#=======================================================================
-def plotdat(angles,energies,pflag,NMAX):
-    """
-    Arguments:
-	  angles (float(nmax,nmax)) = array that contains lattice angles;
-      energies (float(nmax,nmax)) = array that contains lattice energies;
-	  pflag (int) = parameter to control plotting;
-      NMAX (int) = side length of square lattice.
-    Description:
-      Function to make a pretty plot of the data array.  Makes use of the
-      quiver plot style in matplotlib.  Use pflag to control style:
-        pflag = 0 for no plot (for scripted operation);
-        pflag = 1 for energy plot;
-        pflag = 2 for angles plot;
-        pflag = 3 for black plot.
-	  The angles plot uses a cyclic color map representing the range from
-	  0 to pi.  The energy plot is normalised to the energy range of the
-	  current frame.
-	Returns:
-      NULL
-    """
-    if pflag==0:
-        return
-    u = np.cos(angles)
-    v = np.sin(angles)
-    x = np.arange(NMAX)
-    y = np.arange(NMAX)
-    if pflag==1: # colour the arrows according to energy
-        mpl.rc('image', cmap='rainbow')
-        cols = energies
-        norm = plt.Normalize(cols.min(), cols.max())
-    elif pflag==2: # colour the arrows according to angle
-        mpl.rc('image', cmap='hsv')
-        cols = angles%np.pi
-        norm = plt.Normalize(vmin=0, vmax=np.pi)
-    else:
-        mpl.rc('image', cmap='gist_gray')
-        cols = np.zeros_like(angles)
-        norm = plt.Normalize(vmin=0, vmax=1)
 
-    quiveropts = dict(headlength=0,pivot='middle',headwidth=1,scale=1.1*NMAX)
-    fig, ax = plt.subplots()
-    q = ax.quiver(x, y, u, v, cols,norm=norm, **quiveropts)
-    ax.set_aspect('equal')
-    plt.show()
 #=======================================================================
 def savedat(arr,nsteps,Ts,runtime,ratio,energy,order,NMAX):
     """
@@ -222,7 +176,7 @@ def MC_step(comm,angles,energies,Ts,NMAX,rows,offset,above,below,E,Q,R,it):
     return angles, energies, E, Q, R
 
 #=======================================================================
-def simulation_runtime(comm, STEPS, NMAX, Ts):
+def simulation_runtime(STEPS, NMAX, Ts):
     """
     Arguments:
 	  program (string) = the name of the program;
@@ -236,6 +190,7 @@ def simulation_runtime(comm, STEPS, NMAX, Ts):
       NULL
     """
     # First, find out my taskid and how many tasks are running
+    comm = MPI.COMM_WORLD
     taskid = comm.Get_rank()
     numtasks = comm.Get_size()
     numworkers = numtasks-1
@@ -308,6 +263,7 @@ def simulation_runtime(comm, STEPS, NMAX, Ts):
         order = get_order(Q,STEPS)
         final_time = MPI.Wtime()
         runtime = final_time-initial_time
+        print("Size: {:d}, Steps: {:d}, T*: {:5.3f}: Order: {:5.3f}, Time: {:8.6f} s".format(NMAX,STEPS,Ts,order[STEPS-1],runtime))
         return runtime
     
     # End of master code
@@ -344,17 +300,16 @@ def simulation_runtime(comm, STEPS, NMAX, Ts):
 def main(program, NP):
     """
     """
-    comm = MPI.COMM_WORLD
-    list_NMAX = [ceil(10*(10**(3*i/30))) for i in range(31)]
+    list_NMAX = [ceil(2*(1000/2)**(i/20)) for i in range(21)]
     STEPS = 50
     Ts = 0.5
-    runtimes = np.zeros(31)
+    runtimes = np.zeros(21)
 
     for i, NMAX in enumerate(list_NMAX):
-        runtimes[i] = simulation_runtime(comm,STEPS,NMAX,Ts)
+        runtimes[i] = simulation_runtime(STEPS,NMAX,Ts)
 
-    if comm.Get_rank() == 0:      
-        np.savetxt(f"./runtime_vs_NMAX_{NP}.txt",runtimes)
+    if MPI.COMM_WORLD.Get_rank() == 0:      
+        np.savetxt(f"runtimes_vs_NMAX_{NP}.txt",runtimes)
 
 #=======================================================================
 # Main part of program, getting command line arguments and calling

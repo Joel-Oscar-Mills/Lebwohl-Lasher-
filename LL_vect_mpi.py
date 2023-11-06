@@ -2,15 +2,13 @@ import sys
 import time
 import datetime
 import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib import rc
 import os
 os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["NUMEXPR_NUM_THREADS"] = "1"
 os.environ["OMP_NUM_THREADS"] = "1"
 from mpi4py import MPI
 
-MAXWORKER  = 3          # maximum number of worker tasks
+MAXWORKER  = 60         # maximum number of worker tasks
 MINWORKER  = 1          # minimum number of worker tasks
 BEGIN      = 1          # message tag
 DONE       = 2          # message tag
@@ -34,50 +32,6 @@ def initdat(NMAX):
     arr = np.random.random_sample((NMAX,NMAX))*2.0*np.pi
     return arr
 #=======================================================================
-def plotdat(angles,energies,pflag,NMAX):
-    """
-    Arguments:
-	  angles (float(nmax,nmax)) = array that contains lattice angles;
-      energies (float(nmax,nmax)) = array that contains lattice energies;
-	  pflag (int) = parameter to control plotting;
-      NMAX (int) = side length of square lattice.
-    Description:
-      Function to make a pretty plot of the data array.  Makes use of the
-      quiver plot style in matplotlib.  Use pflag to control style:
-        pflag = 0 for no plot (for scripted operation);
-        pflag = 1 for energy plot;
-        pflag = 2 for angles plot;
-        pflag = 3 for black plot.
-	  The angles plot uses a cyclic color map representing the range from
-	  0 to pi.  The energy plot is normalised to the energy range of the
-	  current frame.
-	Returns:
-      NULL
-    """
-    if pflag==0:
-        return
-    u = np.cos(angles)
-    v = np.sin(angles)
-    x = np.arange(NMAX)
-    y = np.arange(NMAX)
-    if pflag==1: # colour the arrows according to energy
-        rc('image', cmap='rainbow')
-        cols = energies
-        norm = plt.Normalize(cols.min(), cols.max())
-    elif pflag==2: # colour the arrows according to angle
-        rc('image', cmap='hsv')
-        cols = angles%np.pi
-        norm = plt.Normalize(vmin=0, vmax=np.pi)
-    else:
-        rc('image', cmap='gist_gray')
-        cols = np.zeros_like(angles)
-        norm = plt.Normalize(vmin=0, vmax=1)
-
-    quiveropts = dict(headlength=0,pivot='middle',headwidth=1,scale=1.1*NMAX)
-    fig, ax = plt.subplots()
-    q = ax.quiver(x, y, u, v, cols,norm=norm, **quiveropts)
-    ax.set_aspect('equal')
-    plt.show()
 #=======================================================================
 def savedat(arr,nsteps,Ts,runtime,ratio,energy,order,NMAX):
     """
@@ -262,9 +216,6 @@ def main(program, STEPS, NMAX, Ts, pflag):
         angles = initdat(NMAX)
         energies = np.zeros((NMAX,NMAX))
 
-        # Plot initial frame of lattice
-        plotdat(angles,energies,pflag,NMAX)
-
         # Distribute work to workers.  Must first figure out how many rows to
         # send and what to do with extra rows.
         averow = NMAX//numworkers
@@ -317,8 +268,8 @@ def main(program, STEPS, NMAX, Ts, pflag):
         runtime = final_time-initial_time
 
         print("{}: Size: {:d}, Steps: {:d}, T*: {:5.3f}: Order: {:5.3f}, Time: {:8.6f} s".format(program, NMAX,STEPS,Ts,order[STEPS-1],runtime))
-        #savedat(angles,STEPS,Ts,runtime,R,E,order,NMAX)
-        plotdat(angles,energies,pflag,NMAX)
+        with open(f"./runtime_vs_NMAX_16.txt", 'a') as f:
+            f.write(f"{runtime}")
     # End of master code
     
     #********* workers code ************/
