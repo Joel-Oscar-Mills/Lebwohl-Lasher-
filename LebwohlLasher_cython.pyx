@@ -1,3 +1,4 @@
+# cython: language_level=3
 """
 Basic Python Lebwohl-Lasher code.  Based on the paper 
 P.A. Lebwohl and G. Lasher, Phys. Rev. A, 6, 426-429 (1972).
@@ -28,11 +29,19 @@ import datetime
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib as mpl
-from numba import njit, jit, prange
+from libc.math cimport cos
+from math import ceil
+import cython
+cimport numpy as cnp
+from cython.parallel import prange
+cimport openmp
+from cython cimport Py_ssize_t
+
+@cython.boundscheck(False)
+@cython.wraparound(False) 
 
 #=======================================================================
-@njit
-def initdat(nmax):
+def initdat(int nmax):
     """
     Arguments:
       nmax (int) = size of lattice to create (nmax,nmax).
@@ -43,19 +52,10 @@ def initdat(nmax):
 	Returns:
 	  arr (float(nmax,nmax)) = array to hold lattice.
     """
-    arr = np.random.random_sample((nmax,nmax))*2.0*np.pi
+    cdef cnp.ndarray[cnp.float64_t, ndim=2] arr = np.random.random_sample((nmax,nmax))*2.0*np.pi
     return arr
 #=======================================================================
-# Numba doesn't yet support randomized array generation \
-# so create function in place
-@njit
-def rand(NMAX):
-    noise = np.empty(NMAX**2,dtype=np.float64)
-    for i in range(len(noise)):
-        noise[i] = np.random.normal()
-    return noise.reshape((NMAX,NMAX))
-#=======================================================================
-def plotdat(angles,energies,pflag,NMAX):
+def plotdat(cnp.ndarray[cnp.float64_t, ndim=2] angles,cnp.ndarray[cnp.float64_t, ndim=2] energies,int pflag,int NMAX):
     """
     Arguments:
 	  angles (float(nmax,nmax)) = array that contains lattice angles;
@@ -77,10 +77,12 @@ def plotdat(angles,energies,pflag,NMAX):
     """
     if pflag==0:
         return
-    u = np.cos(angles)
-    v = np.sin(angles)
-    x = np.arange(NMAX)
-    y = np.arange(NMAX)
+    cdef cnp.ndarray[cnp.float64_t, ndim=2] u = np.cos(angles)
+    cdef cnp.ndarray[cnp.float64_t, ndim=2] v = np.sin(angles)
+    cdef cnp.ndarray[cnp.float64_t, ndim=1] x = np.arange(NMAX)
+    cdef cnp.ndarray[cnp.float64_t, ndim=1] y = np.arange(NMAX)
+    cdef cnp.ndarray[cnp.float64_t, ndim=2] cols = np.zeros((NMAX,NMAX))
+
     if pflag==1: # colour the arrows according to energy
         mpl.rc('image', cmap='rainbow')
         cols = energies
@@ -100,7 +102,7 @@ def plotdat(angles,energies,pflag,NMAX):
     ax.set_aspect('equal')
     plt.show()
 #=======================================================================
-def savedat(arr,nsteps,Ts,runtime,ratio,energy,order,NMAX):
+def savedat(cnp.ndarray[cnp.float64_t, ndim=2] arr,int nsteps,double Ts,double runtime,cnp.ndarray[cnp.float64_t, ndim=1] ratio,cnp.ndarray[cnp.float64_t, ndim=2] energy,cnp.ndarray[cnp.float64_t, ndim=2] order,int NMAX):
     """
     Arguments:
 	  arr (float(nmax,nmax)) = array that contains lattice data;
@@ -137,51 +139,60 @@ def savedat(arr,nsteps,Ts,runtime,ratio,energy,order,NMAX):
         print("   {:05d}    {:6.4f} {:12.4f}  {:6.4f} ".format(i,ratio[i],energy[i],order[i]),file=FileOut)
     FileOut.close()
 #=======================================================================
-@njit
-def row_energy(angles, energies, ix, NMAX, parity):
+cdef void row_energy(double[:, :] angles, double[:, :, :] energies, Py_ssize_t ix, int NMAX, int parity, int new) nogil:
     """
+    Directly manipulate memory views for angles and energies.
     """
-    energies[parity::2] += 0.5 - 1.5*(np.cos( angles[ix,parity::2]-angles[(ix+1)%NMAX,parity::2] ))**2
-    energies[parity::2] += 0.5 - 1.5*(np.cos( angles[ix,parity::2]-angles[(ix-1)%NMAX,parity::2] ))**2
-    energies[parity::2] += 0.5 - 1.5*(np.cos( angles[ix,parity::2]-np.roll(angles[ix,:],-1)[(parity)::2] ))**2
-    energies[parity::2] += 0.5 - 1.5*(np.cos( angles[ix,parity::2]-np.roll(angles[ix,:],1)[(parity)::2] ))**2
+    # Assuming angles is a 2D array and energies is a 3D array
+    cdef Py_ssize_t j
+    cdef double angle_diff
+
+    # Loop through the selected elements based on parity
+    for j in range(parity, NMAX, 2):
+        # Calculating the periodic boundary conditions manually
+        angle_diff = angles[ix, j] - angles[(ix + 1) % NMAX, j]
+        energies[new, ix, j] += 0.5 - 1.5 * cos(angle_diff) ** 2
+
+        angle_diff = angles[ix, j] - angles[(ix - 1 + NMAX) % NMAX, j]  # Add NMAX for negative wrapping
+        energies[new, ix, j] += 0.5 - 1.5 * cos(angle_diff) ** 2
+
+        # For the roll, you will have to manually implement the roll behavior
+        # since np.roll isn't available without the GIL.
+        angle_diff = angles[ix, j] - angles[ix, (j - 1 + NMAX) % NMAX]
+        energies[new, ix, j] += 0.5 - 1.5 * cos(angle_diff) ** 2
+
+        angle_diff = angles[ix, j] - angles[ix, (j + 1) % NMAX]
+        energies[new, ix, j] += 0.5 - 1.5 * cos(angle_diff) ** 2
+
+    parity = 1 - parity
 
 #=======================================================================
-# Numba does not support np.einsum() so a brute force approach is necessary
-@njit
-def get_Q(angles,NMAX):
+def get_Q(cnp.ndarray[cnp.float64_t, ndim=2] angles,int NMAX):
     """
     """
-    Qab = np.zeros((2,2))
-    delta = np.eye(2,2)
-
-    field = np.vstack((np.cos(angles),np.sin(angles))).reshape(2,NMAX,NMAX)
-    for a in range(2):
-        for b in range(2):
-            for i in range(NMAX):
-                for j in range(NMAX):
-                    Qab[a,b] += 3*field[a,i,j]*field[b,i,j] - delta[a,b]
-    Qab = Qab/(2*NMAX*NMAX)
-    return Qab
+    cdef cnp.ndarray[cnp.float64_t, ndim=3] field = np.vstack((np.cos(angles),np.sin(angles))).reshape(2,NMAX,NMAX)
+    cdef cnp.ndarray[cnp.float64_t, ndim=2] Q = 1.5*np.einsum("aij,bij->ab",field,field)/(NMAX**2) - 0.5*np.eye(2,2)
+    return Q
 #=======================================================================
-@njit
-def get_order(Q,STEPS):
+def get_order(cnp.ndarray[cnp.float64_t, ndim=3] Q,int STEPS):
     """
     """
-    order = np.zeros(STEPS)
+    cdef cnp.ndarray[cnp.float64_t, ndim=1] order = np.zeros(STEPS)
+    cdef cnp.ndarray[cnp.float64_t, ndim=1] eigenvalues = np.zeros(2)
+    cdef cnp.ndarray[cnp.float64_t, ndim=2] eigenvectors = np.zeros((2,2))
+    cdef Py_ssize_t t
     for t in range(STEPS):
         eigenvalues,eigenvectors = np.linalg.eig(Q[t])
         order[t] = eigenvalues.max()
     return order
 #=======================================================================
-@njit(parallel=True)
-def MC_substep(angles,rangles,energies,parity,Ts,NMAX,E,Q,R,it):
+def MC_substep(cnp.ndarray[cnp.float64_t, ndim=2] angles,cnp.ndarray[cnp.float64_t, ndim=2] rangles,cnp.ndarray[cnp.float64_t, ndim=3] energies,int parity,double Ts,int NMAX,cnp.ndarray[cnp.float64_t, ndim=1] E,cnp.ndarray[cnp.float64_t, ndim=1] Q,cnp.ndarray[cnp.float64_t, ndim=1] R,int it,int threads):
     """
     """
     # Compute the energies
-    for ix in prange(NMAX):
-        row_energy(angles, energies[0,ix,:], ix, NMAX, parity)
-        parity = 1 - parity
+    cdef Py_ssize_t ix
+    for ix in prange(NMAX, nogil=True, num_threads=threads):
+        row_energy(angles, energies, ix, NMAX, parity, 0)
     parity = (parity + NMAX%2)%2
 
     # Perturb the angles randomly (for on-parity sites)
@@ -193,15 +204,14 @@ def MC_substep(angles,rangles,energies,parity,Ts,NMAX,E,Q,R,it):
         angles[(1-parity)::2,parity::2] += rangles[(1-parity)::2,parity::2]
    
     # Compute new energies
-    for ix in prange(NMAX):
-        row_energy(angles, energies[1,ix,:], ix, NMAX, parity)
-        parity = 1 - parity
+    for ix in prange(NMAX, nogil=True, num_threads=threads):
+        row_energy(angles, energies, ix, NMAX, parity, 1)
     parity = (parity + NMAX%2)%2
 
     # Determine which changes to accept (store as Boolean arrays)
-    guaranteed = (energies[1] <= energies[0])
-    boltz = np.exp(-(energies[1]-energies[0])/Ts)
-    accept = guaranteed + (1-guaranteed)*(boltz >= np.random.uniform(0.0,1.0,size=(NMAX,NMAX)))
+    cdef cnp.ndarray[cnp.uint8_t, ndim=2, cast=True] guaranteed = (energies[1] <= energies[0])
+    cdef cnp.ndarray[cnp.float64_t, ndim=2] boltz = np.exp(-(energies[1]-energies[0])/Ts)
+    cdef cnp.ndarray[cnp.uint8_t, ndim=2, cast=True] accept = guaranteed + (1-guaranteed)*(boltz >= np.random.uniform(0.0,1.0,size=(NMAX,NMAX)))
 
     # Adjust energies based on which sites were accepted
     energies[1] = accept*energies[1] + (1-accept)*energies[0]
@@ -222,74 +232,79 @@ def MC_substep(angles,rangles,energies,parity,Ts,NMAX,E,Q,R,it):
         angles[(1-parity)::2,parity::2] -= (1-accept[(1-parity)::2,parity::2])*rangles[(1-parity)::2,parity::2]
     
 #=======================================================================
-@njit(parallel=True)
-def MC_step(angles,Ts,NMAX,E,Q,R,it):
+def MC_step(cnp.ndarray[cnp.float64_t, ndim=2] angles,double Ts,int NMAX,cnp.ndarray[cnp.float64_t, ndim=1] E,cnp.ndarray[cnp.float64_t, ndim=3] Q,cnp.ndarray[cnp.float64_t, ndim=1] R,Py_ssize_t it,int threads):
     """
     """
-    scale=0.1+Ts
-    rangles = rand(NMAX)
-    energies = np.zeros((2,NMAX,NMAX))
+    cdef double scale=0.1+Ts
+    cdef cnp.ndarray[cnp.float64_t, ndim=2] rangles = np.random.normal(scale=scale, size=(NMAX,NMAX))
+    cdef cnp.ndarray[cnp.float64_t, ndim=3] energies = np.zeros((2,NMAX,NMAX))
 
     # Perform the MC step for all on-parity sites, then for off-parity sites
-    parity = 0
-    MC_substep(angles,rangles,energies,parity,Ts,NMAX,E,Q,R,it)
+    cdef int parity = 0
+    MC_substep(angles,rangles,energies,parity,Ts,NMAX,E,Q,R,it,threads)
     parity = 1
-    MC_substep(angles,rangles,energies,parity,Ts,NMAX,E,Q,R,it)
+    MC_substep(angles,rangles,energies,parity,Ts,NMAX,E,Q,R,it,threads)
 
     # Recompute on-parity site energies as these will have changed after the off-parity update
     parity = 0
-    for ix in prange(NMAX):
-        row_energy(angles, energies[1,ix,:], ix, NMAX, parity)
-        parity = 1 - parity
+    cdef Py_ssize_t ix
+    for ix in prange(NMAX, nogil=True, num_threads=threads):
+        row_energy(angles, energies, ix, NMAX, parity, 1)
 
     E[it] = np.sum(energies[1])
     Q[it] = get_Q(angles,NMAX)
 
     return angles, energies, E, Q, R
 #=======================================================================
+def simulation_runtime(int STEPS,int NMAX,double Ts,int pflag, int threads):
+    """
+    """
+    # Create arrays to store energy, acceptance ratio and averaged Q matrix
+    cdef cnp.ndarray[cnp.float64_t, ndim=1] E = np.zeros(STEPS)
+    cdef cnp.ndarray[cnp.float64_t, ndim=1] R = np.zeros(STEPS)
+    cdef cnp.ndarray[cnp.float64_t, ndim=3] Q = np.zeros((STEPS,2,2))
+
+    # Initialize grid
+    cdef cnp.ndarray[cnp.float64_t, ndim=2] angles = initdat(NMAX)
+    cdef cnp.ndarray[cnp.float64_t, ndim=2] energies = np.zeros((NMAX,NMAX))
+
+    initial_time = openmp.omp_get_wtime()
+
+    cdef Py_ssize_t it
+    for it in range(STEPS):
+        angles, energies, E, Q, R = MC_step(angles,Ts,NMAX,E,Q,R,it,threads)
+
+    cdef cnp.ndarray[cnp.float64_t, ndim=1] order = get_order(Q,STEPS)
+    final_time = openmp.omp_get_wtime()
+    runtime = final_time-initial_time
+
+    return runtime
+
+#=======================================================================
 def main(program):
     """
     """
-    # Define command line arguments within main() as NUMBA does not support entering them in the terminal
-    STEPS = 50
-    NMAX = 50
-    Ts = 0.5
-    pflag = 2
+    cdef int NP = 4
+    cdef cnp.ndarray[long, ndim=1] list_NMAX = np.array([ceil(10*(10**(2*i/20))) for i in range(21)])
+    cdef int STEPS = 50
+    cdef double Ts = 0.5
+    cdef pflag = 2
+    cdef cnp.ndarray[cnp.float64_t, ndim=1] runtimes = np.zeros(21)
+    cdef int NMAX = 0
 
-    # Create arrays to store energy, acceptance ratio and averaged Q matrix
-    E = np.zeros(STEPS)
-    R = np.zeros(STEPS)
-    Q = np.zeros((STEPS,2,2))
+    cdef Py_ssize_t i
+    for i in range(len(list_NMAX)):
+        NMAX = list_NMAX[i]
+        runtimes[i] = simulation_runtime(STEPS,NMAX,Ts,pflag,NP)
 
-    # Initialize grid
-    angles = initdat(NMAX)
-    energies = np.zeros((NMAX,NMAX))
-
-    # Plot initial frame of lattice
-    plotdat(angles,energies,pflag,NMAX)
-
-    initial_time = time.time()
-
-    for it in range(STEPS):
-        angles, energies, E, Q, R = MC_step(angles,Ts,NMAX,E,Q,R,it)
-
-    order = get_order(Q,STEPS)
-    final_time = time.time()
-    runtime = final_time-initial_time
-    
-    # Final outputs
-    print("{}: Size: {:d}, Steps: {:d}, T*: {:5.3f}: Order: {:5.3f}, Time: {:8.6f} s".format(program, NMAX,STEPS,Ts,order[STEPS-1],runtime))
-    # Plot final frame of lattice and generate output file
-    plotdat(angles,energies[1],pflag,NMAX)
-
+    np.savetxt(f"./cython_runtimes_vs_NMAX_{NP}.txt",runtimes)
 #=======================================================================
 # Main part of program, getting command line arguments and calling
 # main simulation function.
 #
-if __name__ == '__main__':
+if _name_ == '_main_':
     if int(len(sys.argv)) == 1:
-        PROGNAME = sys.argv[0]
-        main(PROGNAME)
+        main(sys.argv[0])
     else:
         print("Usage: python {}".format(sys.argv[0]))
 #=======================================================================
