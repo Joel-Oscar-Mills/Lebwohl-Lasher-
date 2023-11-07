@@ -58,29 +58,44 @@ plt.rc('text.latex', preamble=R'\usepackage{amsmath} \usepackage{bbold}')
 plt.rcParams.update(tex_fonts)
 width = 252
 
-path2 = "./numba_runtime_vs_NMAX_2.txt"
-path4 = "./numba_runtime_vs_NMAX_4.txt"
+#path2 = "./numba_runtime_vs_NMAX_2.txt"
+#path4 = "./numba_runtime_vs_NMAX_4.txt"
 path8 = "./numba_runtime_vs_NMAX_8.txt"
 path16 = "./numba_runtime_vs_NMAX_16.txt"
 path32 = "./numba_runtime_vs_NMAX_32.txt"
+mpath8 = "./runtimes_vs_NMAX_8.txt"
+mpath16 = "./runtimes_vs_NMAX_16.txt"
+mpath32 = "./runtimes_vs_NMAX_32.txt"
 
-list_NMAX2 = np.array([ceil(2*(1000/2)**(i/20)) for i in range(21)])
-runtimes2 = np.loadtxt(path8)
+#list_NMAX2 = np.array([ceil(2*(1000/2)**(i/20)) for i in range(21)])[1:]
+#runtimes2 = np.loadtxt(path8)[1:]
 
-list_NMAX4 = np.array([ceil(4*(1000/4)**(i/20)) for i in range(21)])
-runtimes4 = np.loadtxt(path8)
+#list_NMAX4 = np.array([ceil(4*(1000/4)**(i/20)) for i in range(21)])[1:]
+#runtimes4 = np.loadtxt(path8)[1:]
 
 #list_NMAX8 = np.array([ceil(8*(10000/8)**(i/20)) for i in range(21)])
-list_NMAX8 = np.array([ceil(8*(1000/8)**(i/20)) for i in range(21)])
-runtimes8 = np.loadtxt(path8)
+list_NMAX8 = np.array([ceil(8*(1000/8)**(i/20)) for i in range(21)])[1:]
+runtimes8 = np.loadtxt(path8)[1:]
 
 #list_NMAX16 = np.array([ceil(16*(10000/16)**(i/20)) for i in range(21)])
-list_NMAX16 = np.array([ceil(16*(1000/16)**(i/20)) for i in range(21)])
-runtimes16 = np.loadtxt(path16)
+list_NMAX16 = np.array([ceil(16*(1000/16)**(i/20)) for i in range(21)])[1:]
+runtimes16 = np.loadtxt(path16)[1:]
 
 #list_NMAX32 = np.array([ceil(32*(10000/32)**(i/20)) for i in range(21)])
-list_NMAX32 = np.array([ceil(32*(1000/32)**(i/20)) for i in range(21)])
-runtimes32 = np.loadtxt(path32)
+list_NMAX32 = np.array([ceil(32*(1000/32)**(i/20)) for i in range(21)])[1:]
+runtimes32 = np.loadtxt(path32)[1:]
+
+#list_NMAX8 = np.array([ceil(8*(10000/8)**(i/20)) for i in range(21)])
+mlist_NMAX8 = np.array([ceil(8*(10000/8)**(i/20)) for i in range(21)])[1:]
+mruntimes8 = np.loadtxt(mpath8)[1:]
+
+#list_NMAX16 = np.array([ceil(16*(10000/16)**(i/20)) for i in range(21)])
+mlist_NMAX16 = np.array([ceil(16*(10000/16)**(i/20)) for i in range(21)])[1:]
+mruntimes16 = np.loadtxt(mpath16)[1:]
+
+#list_NMAX32 = np.array([ceil(32*(10000/32)**(i/20)) for i in range(21)])
+mlist_NMAX32 = np.array([ceil(32*(10000/32)**(i/20)) for i in range(21)])[1:]
+mruntimes32 = np.loadtxt(mpath32)[1:]
 
 fig, ax = plt.subplots(1, 1, figsize=set_size(width))
 ax.set(xlabel=R'NMAX', ylabel=R"Runtime (s)")
@@ -88,11 +103,16 @@ ax.set(xlabel=R'NMAX', ylabel=R"Runtime (s)")
 ax.grid(which='minor',axis='both',linewidth=0.3)
 ax.xaxis.set_minor_locator(AutoMinorLocator(2))
 ax.yaxis.set_minor_locator(AutoMinorLocator(2))
-ax.plot(list_NMAX2, runtimes2, color="g",linewidth=0.5,label=R"STEPS = 5, NP = 2")
-ax.plot(list_NMAX4, runtimes4, color="b",linewidth=0.5,label=R"STEPS = 5, NP = 4")
-ax.plot(list_NMAX8, runtimes8, color="m",linewidth=0.5,label=R"STEPS = 5, NP = 8")
-ax.plot(list_NMAX16, runtimes16, color="k",linewidth=0.5,label=R"STEPS = 5, NP = 16")
-ax.plot(list_NMAX32, runtimes32, color="r",linewidth=0.5,label=R"STEPS = 5, NP = 32")
+#ax.plot(list_NMAX2, runtimes2, color="g",linewidth=0.5,label=R"NP = 2")
+#ax.plot(list_NMAX4, runtimes4, color="b",linewidth=0.5,label=R"NP = 4")
+#ax.plot(list_NMAX8, runtimes8, color="m",linewidth=0.5,linestyle="dashed",label=R"NP = 8 (NUMBA)")
+ax.plot(list_NMAX16, runtimes16, color="r",linewidth=0.5,linestyle="dashed",label=R"NP = 16 (NUMBA)")
+ax.plot(list_NMAX32, runtimes32, color="k",linewidth=0.5,linestyle="dashed",label=R"NP = 32 (NUMBA)")
+#ax.plot(mlist_NMAX8, mruntimes8, color="m",linewidth=0.5,label=R"NP = 8 (MPI)")
+ax.plot(mlist_NMAX16, mruntimes16, color="r",linewidth=0.5,label=R"NP = 16 (MPI)")
+ax.plot(mlist_NMAX32, mruntimes32, color="k",linewidth=0.5,label=R"NP = 32 (MPI)")
 ax.legend()
-#plt.savefig("./NMAX_vs_runtime.pdf", format='pdf', bbox_inches="tight")
+ax.set_xscale('log')
+ax.set_yscale('log')
+plt.savefig("./MPI_vs_Numba.pdf", format='pdf', bbox_inches="tight")
 plt.show()

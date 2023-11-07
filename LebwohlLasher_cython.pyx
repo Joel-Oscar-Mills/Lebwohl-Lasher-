@@ -41,7 +41,7 @@ from cython cimport Py_ssize_t
 @cython.wraparound(False) 
 
 #=======================================================================
-def initdat(int nmax):
+def initdat(long nmax):
     """
     Arguments:
       nmax (int) = size of lattice to create (nmax,nmax).
@@ -55,7 +55,7 @@ def initdat(int nmax):
     cdef cnp.ndarray[cnp.float64_t, ndim=2] arr = np.random.random_sample((nmax,nmax))*2.0*np.pi
     return arr
 #=======================================================================
-def plotdat(cnp.ndarray[cnp.float64_t, ndim=2] angles,cnp.ndarray[cnp.float64_t, ndim=2] energies,int pflag,int NMAX):
+def plotdat(cnp.ndarray[cnp.float64_t, ndim=2] angles,cnp.ndarray[cnp.float64_t, ndim=2] energies,int pflag,long NMAX):
     """
     Arguments:
 	  angles (float(nmax,nmax)) = array that contains lattice angles;
@@ -102,7 +102,7 @@ def plotdat(cnp.ndarray[cnp.float64_t, ndim=2] angles,cnp.ndarray[cnp.float64_t,
     ax.set_aspect('equal')
     plt.show()
 #=======================================================================
-def savedat(cnp.ndarray[cnp.float64_t, ndim=2] arr,int nsteps,double Ts,double runtime,cnp.ndarray[cnp.float64_t, ndim=1] ratio,cnp.ndarray[cnp.float64_t, ndim=2] energy,cnp.ndarray[cnp.float64_t, ndim=2] order,int NMAX):
+def savedat(cnp.ndarray[cnp.float64_t, ndim=2] arr,int nsteps,double Ts,double runtime,cnp.ndarray[cnp.float64_t, ndim=1] ratio,cnp.ndarray[cnp.float64_t, ndim=2] energy,cnp.ndarray[cnp.float64_t, ndim=2] order,long NMAX):
     """
     Arguments:
 	  arr (float(nmax,nmax)) = array that contains lattice data;
@@ -139,7 +139,7 @@ def savedat(cnp.ndarray[cnp.float64_t, ndim=2] arr,int nsteps,double Ts,double r
         print("   {:05d}    {:6.4f} {:12.4f}  {:6.4f} ".format(i,ratio[i],energy[i],order[i]),file=FileOut)
     FileOut.close()
 #=======================================================================
-cdef void row_energy(double[:, :] angles, double[:, :, :] energies, Py_ssize_t ix, int NMAX, int parity, int new) nogil:
+cdef void row_energy(double[:, :] angles, double[:, :, :] energies, Py_ssize_t ix, long NMAX, int parity, int new) nogil:
     """
     Directly manipulate memory views for angles and energies.
     """
@@ -167,7 +167,7 @@ cdef void row_energy(double[:, :] angles, double[:, :, :] energies, Py_ssize_t i
     parity = 1 - parity
 
 #=======================================================================
-def get_Q(cnp.ndarray[cnp.float64_t, ndim=2] angles,int NMAX):
+def get_Q(cnp.ndarray[cnp.float64_t, ndim=2] angles,long NMAX):
     """
     """
     cdef cnp.ndarray[cnp.float64_t, ndim=3] field = np.vstack((np.cos(angles),np.sin(angles))).reshape(2,NMAX,NMAX)
@@ -186,7 +186,7 @@ def get_order(cnp.ndarray[cnp.float64_t, ndim=3] Q,int STEPS):
         order[t] = eigenvalues.max()
     return order
 #=======================================================================
-def MC_substep(cnp.ndarray[cnp.float64_t, ndim=2] angles,cnp.ndarray[cnp.float64_t, ndim=2] rangles,cnp.ndarray[cnp.float64_t, ndim=3] energies,int parity,double Ts,int NMAX,cnp.ndarray[cnp.float64_t, ndim=1] E,cnp.ndarray[cnp.float64_t, ndim=1] Q,cnp.ndarray[cnp.float64_t, ndim=1] R,int it,int threads):
+def MC_substep(cnp.ndarray[cnp.float64_t, ndim=2] angles,cnp.ndarray[cnp.float64_t, ndim=2] rangles,cnp.ndarray[cnp.float64_t, ndim=3] energies,int parity,double Ts,long NMAX,cnp.ndarray[cnp.float64_t, ndim=1] E,cnp.ndarray[cnp.float64_t, ndim=1] Q,cnp.ndarray[cnp.float64_t, ndim=1] R,int it,int threads):
     """
     """
     # Compute the energies
@@ -232,7 +232,7 @@ def MC_substep(cnp.ndarray[cnp.float64_t, ndim=2] angles,cnp.ndarray[cnp.float64
         angles[(1-parity)::2,parity::2] -= (1-accept[(1-parity)::2,parity::2])*rangles[(1-parity)::2,parity::2]
     
 #=======================================================================
-def MC_step(cnp.ndarray[cnp.float64_t, ndim=2] angles,double Ts,int NMAX,cnp.ndarray[cnp.float64_t, ndim=1] E,cnp.ndarray[cnp.float64_t, ndim=3] Q,cnp.ndarray[cnp.float64_t, ndim=1] R,Py_ssize_t it,int threads):
+def MC_step(cnp.ndarray[cnp.float64_t, ndim=2] angles,double Ts,long NMAX,cnp.ndarray[cnp.float64_t, ndim=1] E,cnp.ndarray[cnp.float64_t, ndim=3] Q,cnp.ndarray[cnp.float64_t, ndim=1] R,Py_ssize_t it,int threads):
     """
     """
     cdef double scale=0.1+Ts
@@ -256,7 +256,7 @@ def MC_step(cnp.ndarray[cnp.float64_t, ndim=2] angles,double Ts,int NMAX,cnp.nda
 
     return angles, energies, E, Q, R
 #=======================================================================
-def simulation_runtime(int STEPS,int NMAX,double Ts,int pflag, int threads):
+def simulation_runtime(int STEPS,long NMAX,double Ts,int pflag, int threads):
     """
     """
     # Create arrays to store energy, acceptance ratio and averaged Q matrix
@@ -290,7 +290,7 @@ def main(program):
     cdef double Ts = 0.5
     cdef pflag = 2
     cdef cnp.ndarray[cnp.float64_t, ndim=1] runtimes = np.zeros(21)
-    cdef int NMAX = 0
+    cdef long NMAX = 0
 
     cdef Py_ssize_t i
     for i in range(len(list_NMAX)):
