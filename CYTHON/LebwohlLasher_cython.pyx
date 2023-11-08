@@ -186,7 +186,7 @@ def get_order(cnp.ndarray[cnp.float64_t, ndim=3] Q,int STEPS):
         order[t] = eigenvalues.max()
     return order
 #=======================================================================
-def MC_substep(cnp.ndarray[cnp.float64_t, ndim=2] angles,cnp.ndarray[cnp.float64_t, ndim=2] rangles,cnp.ndarray[cnp.float64_t, ndim=3] energies,int parity,double Ts,long NMAX,cnp.ndarray[cnp.float64_t, ndim=1] E,cnp.ndarray[cnp.float64_t, ndim=1] Q,cnp.ndarray[cnp.float64_t, ndim=1] R,int it,int threads):
+def MC_substep(cnp.ndarray[cnp.float64_t, ndim=2] angles,cnp.ndarray[cnp.float64_t, ndim=2] rangles,cnp.ndarray[cnp.float64_t, ndim=3] energies,int parity,double Ts,long NMAX,cnp.ndarray[cnp.float64_t, ndim=1] E,cnp.ndarray[cnp.float64_t, ndim=3] Q,cnp.ndarray[cnp.float64_t, ndim=1] R,int it,int threads):
     """
     """
     # Compute the energies
